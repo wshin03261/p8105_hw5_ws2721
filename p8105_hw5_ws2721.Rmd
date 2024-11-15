@@ -4,7 +4,7 @@ output: github_document
 date: "2024-11-13"
 ---
 
-```{r echo = FALSE}
+```{r}
 library(tidyverse)
 library(broom)
 
@@ -67,7 +67,6 @@ It shows a increasing curve as group size increases the probability increases.
 mus = 0:6
 alpha = 0.05
 
-# Data storage
 results = data.frame()
 ```
 
@@ -97,13 +96,14 @@ power_results = results |>
 estimated_results = results |> 
   group_by(mu_true) |> 
   summarize(avg_mu_hat = mean((mu_hat)),
-            avg_mu_hat_rejected = mean(abs(mu_hat[rejected])))
+            avg_mu_hat_rejected_abs = mean(abs(mu_hat[rejected])),
+            avg_mu_hat_rejected = mean(mu_hat[rejected]))
 ```
 
 Then, run a loop that will conduct the t-test with the null hypothesis of mu = 0.
 Each iteration, it will test 5000 times with sample data with n = 30, standard deviation = 5, consists of random mean that is from true mean of 0 through 6.
-Then I made 2 data frame that calculates power and another data frame that has average of all sample mean and average of the rejected mean by their true mean.
-I made the mu_hat average to be absolute value because negative values could even out the numbers to be closer to true mu, therefore hard to see true parameters of the mean rejected values.
+Then I made 2 data frame that calculates power and another data frame that has average of all sample mean by their true mean, average absolute value of the rejected mean by their true mean, average value of the rejected mean by their true mean.
+The reason I made the mu_hat average to be absolute value is that negative values could even out the numbers to be closer to true mu, therefore hard to see true parameters of the mean rejected values.
 
 ```{r}
 ggplot(power_results, aes(x = mu_true, y = power)) +
@@ -118,20 +118,31 @@ The graph shows that as effect size increases, the power increases. This makes s
 ggplot(estimated_results, aes(x = mu_true)) +
   geom_line(aes(y = avg_mu_hat), color = "blue", linetype = "solid", size = 1) +
   geom_point(aes(y = avg_mu_hat), color = "blue") +
-  geom_line(aes(y = avg_mu_hat_rejected), color = "red", linetype = "dashed", size = 1) +
-  geom_point(aes(y = avg_mu_hat_rejected), color = "red") +
+  geom_line(aes(y = avg_mu_hat_rejected_abs), color = "red", linetype = "dashed", size = 1) +
+  geom_point(aes(y = avg_mu_hat_rejected_abs), color = "red") + 
+  geom_line(aes(y = avg_mu_hat_rejected), color = "black", linetype = "dotted", size = 1) +
+  geom_point(aes(y = avg_mu_hat_rejected), color = "black") +
   labs(x = "True mu", y = "Average Estimate of mu",
-       title = "Average Estimate of mu (Blue: All, Red: Rejected)")
+       title = "Average Estimate of mu (Blue: All, Red: Rejected(abs), Black: Rejected)")
 ```
 
-The red dashed line shows the sample average that rejected the t-test by their true average.
+The Blue line shows the mean of sample average.
+The Red line shows the absolute value of the mean of the null rejected sample average.
+The Black line shows the mean of the null rejected sample average.
 
-z-value equation for sample size bigger than or equal to 30: z = (x-mu) / (sigma/sqrt(n))
-
-For alpha = 0.05 for two tailed test, if the z-value exceeds 1.96, they reject the null hypothesis.
+For alpha = 0.05 for two tailed test, if the z-value exceeds 1.96 or -1.96, they reject the null hypothesis.
 If we apply this concept to the result of the graph, it explains the graph.
-You could see all the rejected mean values all exceed 1.96.
-We can see the sample average of mu_hat across the test for which the null is rejected approximately equal to the true value of mu starting from True_mu = 2.
+z-value equation for sample size bigger than or equal to 30: z = (x-mu) / (sigma/sqrt(n))
+Since we know the rejection z -value for alpha = 0.05, x, sigma, n we can calculate the absolute value of mu to reject the null hypothesis.
+
+z = 1.96, sigma = 5, n = 30
+
+Absolute value:
+For x = 0, mu = 1.789
+The red graph the average estimate of mu is all above 1.789. 
+
+The blue graph is self-explanatory, as True mu increases, the average estimate of mu follows.
+The Black graph, True mu = 0 has null rejected sample average of around 0. If we think about that, because the true mu is 0 and sample is normally distributed. The rejected mean is calculated of both negative side and positive side and it shows a value close to 0. Starting from True mu = 1, it starts to follow the red graph as it has significantly lower chance to reject the null as a negative value.
 
 # Problem 3
 
@@ -145,7 +156,13 @@ homicide = homicide_data |>
     total_homicides = n(),
     unsolved_homicides = sum(disposition %in% c("Closed without arrest", "Open/No arrest"))
   )
+```
 
+The raw data consists of unique ID, reported date, the information of the victim, location, and the status of the case resolution (disposition). I have merged city and state to make another variable called city_state.
+
+Then. I have made a data frame called "homicide" that counts all the cases and unsolved cases that happended in the location of which city and state.
+
+```{r}
 baltimore = homicide |> 
   filter(city_state == "Baltimore, MD")
 
@@ -154,6 +171,14 @@ baltimore_prop_test = broom::tidy(prop.test(baltimore$unsolved_homicides, baltim
 baltimore_estimate = baltimore_prop_test |> 
   select(estimate, conf.low, conf.high)
 
+baltimore_estimate
+```
+
+I first filtered the location of interest, Baltimore, MD. Then, conducted the proportion test to get the estimate and the confidence interval.
+
+The estimate is 0.646 with the confidence interval between 0.628 and 0.663.
+
+```{r}
 city_proportions = homicide |> 
   mutate(
     prop_test = map2(unsolved_homicides, total_homicides, ~ prop.test(.x, .y) |> 
@@ -175,3 +200,7 @@ ggplot(city_proportions, aes(x = reorder(city_state, estimate), y = estimate)) +
   theme_minimal()
 ```
 
+Now, I applied the proportion test to every location in the data. 
+As instructed, I did this within a “tidy” pipeline, making use of map2, list columns and unnest to create a tidy dataframe with estimated proportions and confidence intervals for each city.
+
+From the plot, we can see that Chicago, IL has the highest proportion of unsolved homicides and Richmond, VA the lowest, I didn't consider Tulsa, AL as a lowest because it only had 1 case with 0 unsolved homicide. Tulsa, AL didn't have not enough information.
